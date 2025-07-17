@@ -3,7 +3,7 @@ import pandas as pd
 
 # --- アプリの基本設定 ---
 st.set_page_config(page_title="昇給シミュレーター", layout="wide")
-st.title('昇給シミュレーション（マトリクス版）')
+st.title('JS昇給シミュレーション（マトリクス版）')
 
 
 # --- サイドバー (入力部分) ---
