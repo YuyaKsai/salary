@@ -5,26 +5,6 @@ import pandas as pd
 st.set_page_config(page_title="昇給シミュレーター", layout="wide")
 st.title('昇給シミュレーション（マトリクス版）')
 
-# --- 昇給率マトリクスを定義 ---
-# 画像の昇給率を辞書形式で定義（S評価-下位なら8% -> 0.08）
-raise_matrix_data = {
-    '評価': ['S (傑出)', 'A (期待以上)', 'B (期待通り)', 'C (要改善)'],
-    '下位1/3': [0.08, 0.06, 0.04, 0.01],
-    '中位1/3': [0.07, 0.05, 0.03, 0.00],
-    '上位1/3': [0.06, 0.04, 0.02, 0.00],
-}
-# 計算で使いやすいように、評価（S,A,B,C）と昇給率をマッピングする辞書を作成
-# {'S': {'下位': 0.08, '中位': 0.07, '上位': 0.06}, 'A': ...}
-raise_matrix_lookup = {
-    'S': {'下位': 0.08, '中位': 0.07, '上位': 0.06},
-    'A': {'下位': 0.06, '中位': 0.05, '上位': 0.04},
-    'B': {'下位': 0.04, '中位': 0.03, '上位': 0.02},
-    'C': {'下位': 0.01, '中位': 0.00, '上位': 0.00},
-    'D': {'下位': 0.00, '中位': 0.00, '上位': 0.00} # 念のためDも定義
-}
-# Streamlitでの表示用にデータフレームを作成
-matrix_df = pd.DataFrame(raise_matrix_data).set_index('評価')
-
 
 # --- サイドバー (入力部分) ---
 st.sidebar.header('シミュレーション条件の設定')
@@ -38,17 +18,47 @@ total_budget = st.sidebar.number_input(
     format='%d'
 )
 
-# 2. 社員データのアップロード
+# 2. 昇給率マトリクスをUIで設定
+st.sidebar.subheader('昇給率マトリクス (%)')
+
+# st.columnsを使って横に並べる
+c1, c2, c3 = st.sidebar.columns(3)
+with c1:
+    st.write("**下位1/3**")
+    rate_s_low = st.number_input('S評価', value=8.0, key='s_low', format="%.1f", step=0.1)
+    rate_a_low = st.number_input('A評価', value=6.0, key='a_low', format="%.1f", step=0.1)
+    rate_b_low = st.number_input('B評価', value=4.0, key='b_low', format="%.1f", step=0.1)
+    rate_c_low = st.number_input('C評価', value=1.0, key='c_low', format="%.1f", step=0.1)
+
+with c2:
+    st.write("**中位1/3**")
+    rate_s_mid = st.number_input('S評価', value=7.0, key='s_mid', format="%.1f", step=0.1)
+    rate_a_mid = st.number_input('A評価', value=5.0, key='a_mid', format="%.1f", step=0.1)
+    rate_b_mid = st.number_input('B評価', value=3.0, key='b_mid', format="%.1f", step=0.1)
+    rate_c_mid = st.number_input('C評価', value=0.0, key='c_mid', format="%.1f", step=0.1)
+
+with c3:
+    st.write("**上位1/3**")
+    rate_s_high = st.number_input('S評価', value=6.0, key='s_high', format="%.1f", step=0.1)
+    rate_a_high = st.number_input('A評価', value=4.0, key='a_high', format="%.1f", step=0.1)
+    rate_b_high = st.number_input('B評価', value=2.0, key='b_high', format="%.1f", step=0.1)
+    rate_c_high = st.number_input('C評価', value=0.0, key='c_high', format="%.1f", step=0.1)
+
+# 入力値から計算用のマトリクスを動的に作成
+raise_matrix_lookup = {
+    'S': {'下位': rate_s_low / 100, '中位': rate_s_mid / 100, '上位': rate_s_high / 100},
+    'A': {'下位': rate_a_low / 100, '中位': rate_a_mid / 100, '上位': rate_a_high / 100},
+    'B': {'下位': rate_b_low / 100, '中位': rate_b_mid / 100, '上位': rate_b_high / 100},
+    'C': {'下位': rate_c_low / 100, '中位': rate_c_mid / 100, '上位': rate_c_high / 100},
+    'D': {'下位': 0.00, '中位': 0.00, '上位': 0.00} # D評価は0%で固定
+}
+
+# 3. 社員データのアップロード
 st.sidebar.subheader('社員データ')
 uploaded_file = st.sidebar.file_uploader(
     "社員リストのExcelまたはCSVファイルをアップロード",
     type=['xlsx', 'csv']
 )
-
-# 昇給マトリクスをサイドバーに表示
-st.sidebar.subheader('昇給率マトリクス')
-st.sidebar.dataframe(matrix_df.style.format('{:.0%}'))
-
 
 # --- メイン画面 (出力部分) ---
 
@@ -70,7 +80,8 @@ if uploaded_file is not None:
             def get_raise_rate(row):
                 rating = row['rating']
                 position = row['band_position']
-                return raise_matrix_lookup.get(rating, {}).get(position, 0) # 見つからない場合は0%
+                # マトリクスから昇給率を検索。見つからない場合は0を返す
+                return raise_matrix_lookup.get(rating, {}).get(position, 0)
 
             df_sim = df.copy()
             df_sim['raise_rate'] = df_sim.apply(get_raise_rate, axis=1)
