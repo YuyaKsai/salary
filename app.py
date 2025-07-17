@@ -21,7 +21,6 @@ total_budget = st.sidebar.number_input(
 # 2. 昇給率マトリクスをUIで設定
 st.sidebar.subheader('昇給率マトリクス (%)')
 
-# st.columnsを使って横に並べる
 c1, c2, c3 = st.sidebar.columns(3)
 with c1:
     st.write("**下位1/3**")
@@ -50,7 +49,7 @@ raise_matrix_lookup = {
     'A': {'下位': rate_a_low / 100, '中位': rate_a_mid / 100, '上位': rate_a_high / 100},
     'B': {'下位': rate_b_low / 100, '中位': rate_b_mid / 100, '上位': rate_b_high / 100},
     'C': {'下位': rate_c_low / 100, '中位': rate_c_mid / 100, '上位': rate_c_high / 100},
-    'D': {'下位': 0.00, '中位': 0.00, '上位': 0.00} # D評価は0%で固定
+    'D': {'下位': 0.00, '中位': 0.00, '上位': 0.00}
 }
 
 # 3. 社員データのアップロード
@@ -62,7 +61,6 @@ uploaded_file = st.sidebar.file_uploader(
 
 # --- メイン画面 (出力部分) ---
 
-# ファイルがアップロードされたら処理を開始
 if uploaded_file is not None:
     try:
         df = pd.read_excel(uploaded_file) if uploaded_file.name.endswith('.xlsx') else pd.read_csv(uploaded_file)
@@ -71,22 +69,24 @@ if uploaded_file is not None:
         st.dataframe(df)
 
         # --- 計算ロジック ---
-        # 必須列の確認
         required_cols = ['salary', 'rating', 'band_position']
         if not all(col in df.columns for col in required_cols):
             st.error(f"エラー: ファイルには {', '.join(required_cols)} の列が必要です。")
         else:
-            # 昇給率を決定する関数
             def get_raise_rate(row):
                 rating = row['rating']
                 position = row['band_position']
-                # マトリクスから昇給率を検索。見つからない場合は0を返す
                 return raise_matrix_lookup.get(rating, {}).get(position, 0)
 
             df_sim = df.copy()
             df_sim['raise_rate'] = df_sim.apply(get_raise_rate, axis=1)
             df_sim['increase_amount'] = (df_sim['salary'] * df_sim['raise_rate']).round()
             df_sim['new_salary'] = df_sim['salary'] + df_sim['increase_amount']
+            df_sim['monthly_salary_current'] = (df_sim['salary'] / 12).round()
+            df_sim['monthly_salary_new'] = (df_sim['new_salary'] / 12).round()
+            
+            # 月給の増減額を計算
+            df_sim['monthly_increase'] = df_sim['monthly_salary_new'] - df_sim['monthly_salary_current']
 
             total_cost = df_sim['increase_amount'].sum()
             remaining_budget = total_budget - total_cost
@@ -100,12 +100,26 @@ if uploaded_file is not None:
             col3.metric("差額", f"{remaining_budget:,.0f} 円", delta_color=delta_color)
 
             st.header('3. 昇給詳細データ')
-            st.dataframe(df_sim.style.format({
+
+            # 表示する列を定義
+            display_columns = [
+                'name', 'rating', 'band_position', 'raise_rate',
+                'salary', 'new_salary', 'increase_amount',
+                'monthly_salary_current', 'monthly_salary_new', 'monthly_increase'
+            ]
+            # フォーマットを定義
+            format_dict = {
                 'raise_rate': '{:.2%}',
-                'salary': '{:,.0f}',
-                'increase_amount': '{:,.0f}',
-                'new_salary': '{:,.0f}'
-            }))
+                'salary': '{:,.0f} 円',
+                'new_salary': '{:,.0f} 円',
+                'increase_amount': '{:+,} 円',
+                'monthly_salary_current': '{:,.0f} 円',
+                'monthly_salary_new': '{:,.0f} 円',
+                'monthly_increase': '{:+,} 円'
+            }
+            
+            display_columns_exist = [col for col in display_columns if col in df_sim.columns]
+            st.dataframe(df_sim[display_columns_exist].style.format(format_dict))
 
     except Exception as e:
         st.error(f"ファイルの読み込みまたは処理中にエラーが発生しました: {e}")
